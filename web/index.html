@@ -32,8 +32,8 @@
   </div>
   <br />
   <textarea id="pgn" style="width: 390px; height: 200px;" placeholder="Enter PGN (Key)"></textarea>
-  <textarea id="plain" style="width: 390px; height: 200px;" placeholder="Plaintext" maxlength="64"></textarea>
-  <textarea id="cipher" style="width: 390px; height: 200px;" placeholder="Ciphertext" maxlength="64"></textarea>
+  <textarea id="plain" style="width: 390px; height: 200px;" placeholder="Plaintext"></textarea>
+  <textarea id="cipher" style="width: 390px; height: 200px;" placeholder="Ciphertext"></textarea>
   <br /><br />
   <button id="encrypt">Encrypt</button>
   <button id="decrypt">Decrypt</button>
@@ -50,8 +50,7 @@
   <ul>
     <li>Using a game with unmoved pieces will leave parts of the plaintext unmodified</li>
     <li>Transposition order is not configurable (left to right, top to bottom)</li>
-    <li>Adds arbitrary space characters when plaintext is < 64 characters</li>
-    <li>Limited plaintext size of <= 64 characters</li>
+    <li>Adds space characters for padding when plaintext is not % 64</li>
     <li>Chesspose board is not interactive</li>
     <li>Implemented in JavaScript</li>
     <li>Uses a single game / PGN</li>
@@ -65,16 +64,16 @@
 <br/><br/><br/><br/><br/>
 
 <script src="https://unpkg.com/jquery@3.5.1/dist/jquery.min.js" integrity="sha384-ZvpUoO/+PpLXR1lu4jmpXWu80pZlYUAfxl5NsBMWOEPSjUn/6Z/hRTt8+pR6L4N2" crossorigin="anonymous"></script>
-<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js" integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD" crossorigin="anonymous"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js" integrity="sha384-s3XgLpvmHyscVpijnseAmye819Ee3yaGa8NxstkJVyA6nuDFjt59u1QvuEl/mecz" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js" integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/lodash.js/4.17.21/lodash.min.js" integrity="sha512-WFN04846sdKMIP5LKNphMaWzU7YpMyCU245etK3g/2ARYbPK9Ub18eG+ljU96qKRCWh+quCY7yefSmlkQw1ANQ==" crossorigin="anonymous" referrerpolicy="no-referrer"></script>
 <script>
-// @TODO: Implement multiple boards for messages longer than 64 chars
 const PADDING = ' ';
 const CHAR_1 = '1'.charCodeAt(0);
 const CHAR_A = 'a'.charCodeAt(0);
 const ROUNDS = 1; // NOTE: Round calculation is slow
 const SLEEP_AMT = 50;
-const LIMIT = 64;
+const SIZE = 64;
 
 const pgnEl = document.getElementById('pgn');
 const plainEl = document.getElementById('plain');
@@ -89,27 +88,25 @@ const board = Chessboard('board', { moveSpeed: 'fast', position: 'start' });
 const sleep = ms => (new Promise(r => setTimeout(r, ms)));
 
 const encrypt = async (grid, moves, reverse=false) => {
-  const target = reverse ? plainEl : cipherEl;
-  board.position(game.fen());
+  // board.position(game.fen());
 
   for (const move of moves) {
-    const _from = move.from;
-    const _to = move.to;
-
-    const [ax, ay] = [_from.charCodeAt(0) -  CHAR_A, _from.charCodeAt(1) - CHAR_1];
-    const [bx, by] = [_to.charCodeAt(0) -  CHAR_A, _to.charCodeAt(1) - CHAR_1];
-
+    const ax = move.from.charCodeAt(0) -  CHAR_A;
+    const ay = move.from.charCodeAt(1) - CHAR_1;
+    const bx = move.to.charCodeAt(0) -  CHAR_A;
+    const by = move.to.charCodeAt(1) - CHAR_1;
     const a = grid[ay][ax];
     const b = grid[by][bx];
 
     swap(grid, [ax, ay], [bx, by]);
 
-    reverse ? game.undo(move) : game.move(move);
-    board.position(game.fen());
-
-    // Update board visually
     if (enableAnimationsEl.checked) {
-      const text = gridToStr(grid).slice(0, 64);
+      const target = reverse ? plainEl : cipherEl;
+
+      reverse ? game.undo(move) : game.move(move);
+      board.position(game.fen());
+
+      const text = gridToStr(grid);
       target.value = text;
       await sleep(SLEEP_AMT);
     }
@@ -121,11 +118,25 @@ const decrypt = async (grid, moves) => {
   await encrypt(grid, moves, true);
 };
 
-/* split string into 8x8 y,x chess matrix, example:
-    const grid = [ ['C', 'h', 'e', 's'], ['i', 's'], ...]*/
-const pad = str => str.padEnd(LIMIT, PADDING)
+/* split string into 8x8 y,x chess matrix, ex.:
+    [ ['C', 'h', 'e', 's'], ['i', 's'], ...] */
 const strToGrid = str => str.match(/.{8,8}/g).map(x => x.split(''));
 const gridToStr = matrix => matrix.map(x => x.join('')).join('');
+const padPlain = plain => {
+  const pLen = plain.length;
+
+  if (pLen % SIZE === 0) {
+    return plain;
+  } else if (pLen < SIZE) {
+    const padAmount = SIZE - pLen;
+    return plain.padEnd(pLen + padAmount, PADDING);
+  } else if (pLen > SIZE) {
+    const padAmount = SIZE - (pLen % SIZE);
+    return plain.padEnd(pLen + padAmount, PADDING);
+  } else {
+    return plain;
+  }
+};
 const swap = (matrix, va, vb) => {
   const tmp = matrix[va[1]][va[0]];
   matrix[va[1]][va[0]] = matrix[vb[1]][vb[0]];
@@ -133,29 +144,42 @@ const swap = (matrix, va, vb) => {
 };
 
 // SETUP
-const randomPGNSample =  '1. d3 Nh6 2. a3 d5 3. b3 a5 4. f4 Qd6 5. g3 Qa6 6. Bb2 Qb5 7. Kd2 Nf5 8. Bf6 Bd7 9. Ke1 a4 10. c3 c5 11. Be5 Be6 12. Bf6 Qa6 13. c4 axb3 14. Kd2 Nh4 15. Bb2 Qb6 16. Bxg7 Ng2 17. d4 Qd6 18. Be5 Bh3 19. Qc2 Qxe5 20. dxe5 Nxf4 21. Qg6 Nh5 22. e3 Bg2 23. e6 b2 24. Qd3 Nxg3 25. e4 Nf5 26. Qxd5 Bxh1 27. Bd3 Na6 28. exf5 bxa1=Q 29. Ke2 fxe6 30. Qxh1 Bg7 31. Ke3 Bh6+ 32. Kf2 Qa2+ 33. Kf1 Rf8 34. Nf3 Rh8 35. Ne1 exf5 36. Qg2 Kd8 37. Qg8+ Rxg8 38. Nd2 Bg7 39. Ke2 Qc2 40. Nxc2 Kd7 41. Nb3 Nb4 42. Nba1 Ra5 43. h3 h5 44. h4 Kd8 45. Nd4 Kd7 46. Kd2 Kd8 47. Be2 Bf6 48. axb4 Ra8 49. Nf3 Bg7 50. Kd1 Ra5 51. Nh2 b5 52. bxc5 Ke8 53. Ng4 Bxa1 54. Ne5 Ra6 55. Bxh5+ Kd8 56. Be2 Rg4 57. Nd3 Bf6 58. Bxg4 Ke8 59. Be2 Ra2 60. Nf2 e6 61. Ne4 Bxh4 62. Bf1 Bf6 63. Bd3 Rb2 64. Nd6+ Ke7 65. cxb5 Rh2 66. Bb1 Rc2 67. Ba2 Bd4 68. Bd5 Rf2 69. Bh1 Kd8 70. c6 Re2 71. Nb7+ Ke7 72. Be4 Kf8 73. b6 Re3 74. c7 Rc3 75. c8=B Bg7 76. Nd8 Bd4 77. b7 Kg7 78. b8=Q Kf6 79. Nc6 f4 80. Kd2 Ra3 81. Kc1 e5 82. Qd6+ Kg5 83. Qc7 Ra7 84. Bc2 Kh4 85. Qd6 Bb2+ 86. Kd2 f3 87. Qb8 Rg7 88. Qb5 Rg1 89. Kd3 Rc1 90. Qa6 Kg5 91. Qa3 Rxc2 92. Bb7 Rc4 93. Qb4 Rc2 94. Qe1 Rd2+ 95. Ke3 Rd8 96. Nxe5 Rd1 97. Qf1 Ba1 98. Qe1 Bb2 99. Bc6 Bc1+ 100. Kf2 Bb2 101. Qe2 Rd8 102. Qc2 Kh6 103. Qc5 Kh5 104. Kg3 Rf8 105. Qc1 Rf6 106. Qc5 Ba3 107. Nxf3+ Bxc5 108. Be8+ Rg6+ 109. Bxg6+ Kxg6 110. Kh4 Bb6 111. Ne5+ Kh6 112. Nd3 Bc7 113. Ne5 Kg7 114. Kg4 Kf8 115. Kg5 Bb8 116. Kf5 Bc7 117. Kf6 Ke8 118. Kf5 Bxe5'
-const plainSample = pad('Chess is an abstract strategy game and involves no hidden information'
-  .replace(/\s/g, '')
-  .replace(' ', ''))
+const randomPGNSample =  '1. d3 Nh6 2. a3 d5 3. b3 a5 4. f4 Qd6 5. g3 Qa6 6. Bb2 Qb5 7. Kd2 Nf5 8. Bf6 Bd7 9. Ke1 a4 10. c3 c5 11. Be5 Be6 12. Bf6 Qa6 13. c4 axb3 14. Kd2 Nh4 15. Bb2 Qb6 16. Bxg7 Ng2 17. d4 Qd6 18. Be5 Bh3 19. Qc2 Qxe5 20. dxe5 Nxf4 21. Qg6 Nh5 22. e3 Bg2 23. e6 b2 24. Qd3 Nxg3 25. e4 Nf5 26. Qxd5 Bxh1 27. Bd3 Na6 28. exf5 bxa1=Q 29. Ke2 fxe6 30. Qxh1 Bg7 31. Ke3 Bh6+ 32. Kf2 Qa2+ 33. Kf1 Rf8 34. Nf3 Rh8 35. Ne1 exf5 36. Qg2 Kd8 37. Qg8+ Rxg8 38. Nd2 Bg7 39. Ke2 Qc2 40. Nxc2 Kd7 41. Nb3 Nb4 42. Nba1 Ra5 43. h3 h5 44. h4 Kd8 45. Nd4 Kd7 46. Kd2 Kd8 47. Be2 Bf6 48. axb4 Ra8 49. Nf3 Bg7 50. Kd1 Ra5 51. Nh2 b5 52. bxc5 Ke8 53. Ng4 Bxa1 54. Ne5 Ra6 55. Bxh5+ Kd8 56. Be2 Rg4 57. Nd3 Bf6 58. Bxg4 Ke8 59. Be2 Ra2 60. Nf2 e6 61. Ne4 Bxh4 62. Bf1 Bf6 63. Bd3 Rb2 64. Nd6+ Ke7 65. cxb5 Rh2 66. Bb1 Rc2 67. Ba2 Bd4 68. Bd5 Rf2 69. Bh1 Kd8 70. c6 Re2 71. Nb7+ Ke7 72. Be4 Kf8 73. b6 Re3 74. c7 Rc3 75. c8=B Bg7 76. Nd8 Bd4 77. b7 Kg7 78. b8=Q Kf6 79. Nc6 f4 80. Kd2 Ra3 81. Kc1 e5 82. Qd6+ Kg5 83. Qc7 Ra7 84. Bc2 Kh4 85. Qd6 Bb2+ 86. Kd2 f3 87. Qb8 Rg7 88. Qb5 Rg1 89. Kd3 Rc1 90. Qa6 Kg5 91. Qa3 Rxc2 92. Bb7 Rc4 93. Qb4 Rc2 94. Qe1 Rd2+ 95. Ke3 Rd8 96. Nxe5 Rd1 97. Qf1 Ba1 98. Qe1 Bb2 99. Bc6 Bc1+ 100. Kf2 Bb2 101. Qe2 Rd8 102. Qc2 Kh6 103. Qc5 Kh5 104. Kg3 Rf8 105. Qc1 Rf6 106. Qc5 Ba3 107. Nxf3+ Bxc5 108. Be8+ Rg6+ 109. Bxg6+ Kxg6 110. Kh4 Bb6 111. Ne5+ Kh6 112. Nd3 Bc7 113. Ne5 Kg7 114. Kg4 Kf8 115. Kg5 Bb8 116. Kf5 Bc7 117. Kf6 Ke8 118. Kf5 Bxe5';
+const plainSample = 'chess is an abstract strategy game and involves no hidden information'
+  .replace(/\s/g, '');
 
 pgnEl.value = randomPGNSample;
 plainEl.value = plainSample;
 
 encryptEl.onclick = async () => {
+  // game.clear();
+  // board.position(game.fen());
+
   console.time('encrypt');
-  let plain = pad(plainEl.value);
+  let plain = plainEl.value;
 
   for (let i=0; i < ROUNDS; i++) {
-    game.clear();
+    // Add padding if required
+    plain = padPlain(plain);
+
+    const flatGrid = strToGrid(plain);
+    const grids = _.chunk(flatGrid, 8);
+      console.log(grids);
+    let cipherText = '';
+
+    for (const grid of grids) {
+      // game.clear();
+      game.load_pgn(pgnEl.value);
+      const moves = game.history({ verbose: true });
+      game.reset();
+      board.position(game.fen());
+      await encrypt(grid, moves);
+      cipherText += gridToStr(grid);
+    }
+
     game.load_pgn(pgnEl.value);
     board.position(game.fen());
-    const moves = game.history({ verbose: true });
-    const grid = strToGrid(plain);
 
-    game.reset();
-    await encrypt(grid, moves);
-
-    const cipherText = gridToStr(grid).slice(0, LIMIT);
     cipherEl.value = cipherText;
     plain = cipherText;
   }
@@ -164,24 +188,33 @@ encryptEl.onclick = async () => {
   console.timeEnd('encrypt');
 };
 
-decryptEl.onclick = () => {
+decryptEl.onclick = async () => {
   console.time('decrypt');
   let cipherText = cipherEl.value;
 
   for (let i=0; i < ROUNDS; i++) {
-    game.clear();
-    game.load_pgn(pgnEl.value);
-    board.position(game.fen());
-    const moves = game.history({ verbose: true });
-
-    if (cipherText.length % LIMIT !== 0) { 
-      throw new Error(`Invalid cipher provided, Chesspose needs % ${LIMIT} ciphertext.`);
+    if (cipherText.length % SIZE !== 0) { 
+      throw new Error(`Invalid ciphertext provided, Chesspose needs % ${SIZE} length.`);
     }
 
-    const grid = strToGrid(cipherText);
-    decrypt(grid, moves);
+    const flatGrid = strToGrid(cipherText);
+    const grids = _.chunk(flatGrid, 8);
+      console.log(grids);
+    let plainText = '';
 
-    const plainText = gridToStr(grid)
+    for (const grid of grids) {
+      game.clear();
+      game.reset();
+      game.load_pgn(pgnEl.value);
+      board.position(game.fen());
+      const moves = game.history({ verbose: true });
+      await decrypt(grid, moves);
+      plainText += gridToStr(grid);
+    }
+
+    game.reset();
+    board.position(game.fen());
+
     plainEl.value = plainText;
     cipherText = plainText;
   }
