@@ -1,8 +1,6 @@
-# Chesspose
-
 ## Description:
 
-Chesspose is an experiment to play with transposition ciphers utilizing the movement of chess pieces.
+[Chesspose](https://undaumbra.github.io/chesspose/web/) is an experiment to play with transposition ciphers utilizing the movement of chess pieces.
 
 Encryption works by assigning each letter of plaintext to a square on the board. After loading a game using a PGN, each move will swap two squares (where the piece came from and where it moved to).
 
