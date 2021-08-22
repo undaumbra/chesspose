@@ -11,10 +11,8 @@ The PGN acts as the key, instead of communicating a PGN directly a description o
 ## Current Limitations:
 - Using a game with unmoved pieces will leave parts of the plaintext unmodified
 - Transposition order is not configurable (left to right, top to bottom)
-- Adds arbitrary space characters when plaintext is < 64 characters
-- Limited plaintext size of <= 64 characters
+- Adds space characters for padding when plaintext is not % 64
 - Chesspose board is not interactive
 - Implemented in JavaScript
 - Uses a single game / PGN
 - Only allows legal moves
-
